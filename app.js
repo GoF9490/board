@@ -1,4 +1,4 @@
-const port = 5000;
+const port = 3005;
 const express = require('express'); // 프레임워크
 const app = express();
 const bodyParser = require('body-parser'); // post값 body객체로 만들어줌
