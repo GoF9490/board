@@ -39,7 +39,23 @@ app.get('/view', (req, res)=>{
 });
 
 app.get('/write', (req, res)=>{
+    if (!req.user) return res.redirect('/');
     return res.send(template.write(template.check_login(req.user)));
+});
+
+app.post('/write_process', (req, res, next)=>{
+    if (req.body.title.length < 1) return res.redirect('/write');
+    if (req.body.content.length < 1) return res.redirect('/write');
+    if (!req.user.nickname) return next('nickname is null');
+    db.query(`INSERT INTO board 
+    (title, content, writer, day) 
+    VALUES (?, ?, ?, NOW())`,
+    [req.body.title, req.body.content, req.user.nickname],
+    (err, result)=>{
+        if (err) return next(err);
+        res.redirect(`/view/?id=${result.insertId}`);
+    });
+    return;
 });
 // 여기까지
 
