@@ -32,23 +32,35 @@ app.use('/auth', authRouter);
 // 나중에 메인페이지 따로 생긴다면 라우터로 빠질것들
 app.get('/', (req, res, next)=>{
     let page = (req.query.page > 1) ? (req.query.page - 1) * 20 : 0;
-    db.query(`SELECT id, title, writer, DATE_FORMAT(day, '%y-%m-%d') AS day 
-    FROM board ORDER BY id DESC LIMIT ?, 20`,
-    [page], (err, results)=>{
+    db.query(`SELECT COUNT(*) AS count FROM board`, (err, result)=>{
         if (err) return next(err);
-        console.log(results[0].day);
-        let list = '';
-        for (var i=0; i<results.length; i++){
-            list += `
-            <li>
-                <div class="board_id">${results[i].id}</div>
-                <div class="board_title"><a href="/view?id=${results[i].id}">${results[i].title}</a></div>
-                <div class="board_writer">${results[i].writer}</div>
-                <div class="board_day">${results[i].day}</div>
-            </li>
-            `;
+        if (result[0].count < 1) return res.send(template.main(template.check_login(req.user), '', '1'));
+
+        let page_view = '<p class="board_bottom"> ' ;
+        let count = (result[0].count / 20) + 1;
+        for (var i=1; i<=count; i++){
+            page_view += `<a href="/?${CheckQuery(req.query)}page=${i}">${i}</a>`
+            page_view += ' ';
         }
-        return res.send(template.main(template.check_login(req.user), list));
+        page_view +='</p>';
+
+        db.query(`SELECT id, title, writer, DATE_FORMAT(day, '%y-%m-%d') AS day
+        FROM board ORDER BY id DESC LIMIT ?, 20`,
+        [page], (err2, results)=>{
+            if (err2) return next(err2);
+            let list = '';
+            for (var i=0; i<results.length; i++){
+                list += `
+                <li>
+                    <div class="board_id">${results[i].id}</div>
+                    <div class="board_title"><a href="/view?id=${results[i].id}">${results[i].title}</a></div>
+                    <div class="board_writer">${results[i].writer}</div>
+                    <div class="board_day">${results[i].day}</div>
+                </li>
+                `;
+            }
+            return res.send(template.main(template.check_login(req.user), list, page_view));
+        });
     });
     return;
 });
@@ -86,5 +98,9 @@ app.use((err, req, res, next)=>{
 app.listen(port, ()=>{
     console.log('listen '+port);
 });
+
+const CheckQuery = (query)=>{
+    return (query.type) ? `type=${query.type}&keyword=${query.keyword}&` : '';
+}
 
 //<textarea id="comment" class="comment_input" placeholder="댓글을 입력해주세요.(최대 30자)"></textarea>
