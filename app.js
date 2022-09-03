@@ -32,10 +32,20 @@ app.use('/auth', authRouter);
 // 나중에 메인페이지 따로 생긴다면 라우터로 빠질것들
 app.get('/', (req, res, next)=>{
     let page = (req.query.page > 1) ? (req.query.page - 1) * 20 : 0;
+    let search = ` `;
+    let keyword = req.query.keyword; // 쿼리문 보호하는 조치 필요.
+    if (req.query.type === 'titlecontent') search = `WHERE title LIKE '%${keyword}%' OR content LIKE '%${keyword}%'`;
+    else if (req.query.type === 'title') search = `WHERE title  LIKE '%${keyword}%'`;
+    else if (req.query.type === 'content') search = `WHERE content LIKE '%${keyword}%'`;
+    else if (req.query.type === 'writer') search = `WHERE writer LIKE '%${keyword}%'`;
+    // ' or id like 'd' or id like ' <- 이딴식으로 검색하면 뚫린다. 실무에서는 쿼리문 필터 필요.
+    // mysql.createconnection 에 charset을 utf8로 해도 한글검색이 안된다.
+    // 비트나미인가 뭔가때문에 mysql datadir 위치가 이상한곳에 박혀있고, my.ini 파일 수정해도 클라이언트랑 db서버 cahrset이 통일이 안된다. 어쨌든 한글 검색이 안된다.
+
     db.query(`SELECT COUNT(*) AS count FROM board`, (err, result)=>{
         if (err) return next(err);
         if (result[0].count < 1) return res.send(template.main(template.check_login(req.user), '', '1'));
-
+        
         let page_view = '<p class="board_bottom"> ' ;
         let count = (result[0].count / 20) + 1;
         for (var i=1; i<=count; i++){
@@ -45,7 +55,7 @@ app.get('/', (req, res, next)=>{
         page_view +='</p>';
 
         db.query(`SELECT id, title, writer, DATE_FORMAT(day, '%y-%m-%d') AS day
-        FROM board ORDER BY id DESC LIMIT ?, 20`,
+        FROM board ${search} ORDER BY id DESC LIMIT ?, 20`, // search부분이 마음에 안든다. ? 치환하고 값으로 넣어주면 빈 공백때 ''까지 출력되서 에러뜬다. null로 해도 에러뜬다.
         [page], (err2, results)=>{
             if (err2) return next(err2);
             let list = '';
