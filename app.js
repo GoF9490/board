@@ -1,5 +1,5 @@
 const port = 3005;
-const title_limit = 20;
+const title_limit = 2;
 const express = require('express'); // 프레임워크
 const app = express();
 const bodyParser = require('body-parser'); // post값 body객체로 만들어줌
@@ -59,12 +59,12 @@ app.get('/', (req, res, next)=>{
     }
     // ' or id like 'd' or id like ' <- 이딴식으로 검색하면 뚫린다. 실 서비스에서는 쿼리문 필터 필요.
 
-    db.query(`SELECT COUNT(*) AS count FROM board WHERE deleted=0`, (err, result)=>{
+    db.query(`SELECT COUNT(*) AS count FROM board WHERE ${search_query} deleted=0 `, (err, result)=>{
         if (err) return next(err);
         if (result[0].count < 1) return res.send(template.main(template.check_login(req.user), '', '1', search));
         
         let page_view = '<p class="board_bottom"> ' ;
-        let count = (result[0].count / title_limit) + 1;
+        let count = Math.ceil(result[0].count / title_limit);
         for (var i=1; i<=count; i++){
             page_view += `<a href="/?${CheckQuery(req.query)}page=${i}">${i}</a>`
             page_view += ' ';
