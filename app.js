@@ -59,35 +59,32 @@ app.get('/', (req, res, next)=>{
     }
     // ' or id like 'd' or id like ' <- 이딴식으로 검색하면 뚫린다. 실 서비스에서는 쿼리문 필터 필요.
 
-    db.query(`SELECT COUNT(*) AS count FROM board WHERE ${search_query} deleted=0 `, (err, result)=>{
+    db.query(`SELECT id, title, writer, DATE_FORMAT(day, '%y-%m-%d') AS day
+    FROM board WHERE ${search_query} deleted=0 ORDER BY id DESC`, (err, result)=>{
         if (err) return next(err);
-        if (result[0].count < 1) return res.send(template.main(template.check_login(req.user), '', '1', search));
+        if (result.length < 1) return res.send(template.main(template.check_login(req.user), '', '1', search));
         
         let page_view = '<p class="board_bottom"> ' ;
-        let count = Math.ceil(result[0].count / title_limit);
+        let count = Math.ceil(result.length / title_limit);
         for (var i=1; i<=count; i++){
             page_view += `<a href="/?${CheckQuery(req.query)}page=${i}">${i}</a>`
             page_view += ' ';
         }
         page_view +='</p>';
 
-        db.query(`SELECT id, title, writer, DATE_FORMAT(day, '%y-%m-%d') AS day
-        FROM board WHERE ${search_query} deleted=0 ORDER BY id DESC LIMIT ?, ?`, // search부분이 마음에 안든다. ? 치환하고 값으로 넣어주면 빈 공백때 ''까지 출력되서 에러뜬다. null로 해도 에러뜬다.
-        [page, title_limit], (err2, results)=>{
-            if (err2) return next(err2);
-            let list = '';
-            for (var i=0; i<results.length; i++){
-                list += `
-                <li>
-                    <div class="board_id">${results[i].id}</div>
-                    <div class="board_title"><a href="/view?id=${results[i].id}">${results[i].title}</a></div>
-                    <div class="board_writer">${results[i].writer}</div>
-                    <div class="board_day">${results[i].day}</div>
-                </li>
-                `;
-            }
-            return res.send(template.main(template.check_login(req.user), list, page_view, search));
-        });
+        let list = '';
+        for (var i=page; i<page + title_limit; i++){
+            if (!result[i]) break;
+            list += `
+            <li>
+                <div class="board_id">${result[i].id}</div>
+                <div class="board_title"><a href="/view?id=${result[i].id}">${result[i].title}</a></div>
+                <div class="board_writer">${result[i].writer}</div>
+                <div class="board_day">${result[i].day}</div>
+            </li>
+            `;
+        }
+        return res.send(template.main(template.check_login(req.user), list, page_view, search));
     });
     return;
 });
