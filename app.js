@@ -1,4 +1,5 @@
 const port = 3005;
+const title_limit = 20;
 const express = require('express'); // 프레임워크
 const app = express();
 const bodyParser = require('body-parser'); // post값 body객체로 만들어줌
@@ -25,29 +26,45 @@ app.use(session({
     store: new fileStore()
 }));
 
-const passport = require('./lib/passport.js')(app); // 패스포트 아직 안쓴다
+const passport = require('./lib/passport.js')(app);
 
 app.use('/auth', authRouter);
 
 // 나중에 메인페이지 따로 생긴다면 라우터로 빠질것들
 app.get('/', (req, res, next)=>{
-    let page = (req.query.page > 1) ? (req.query.page - 1) * 20 : 0;
-    let search = ` `;
-    let keyword = req.query.keyword; // 쿼리문 보호하는 조치 필요.
-    if (req.query.type === 'titlecontent') search = `WHERE title LIKE '%${keyword}%' OR content LIKE '%${keyword}%'`;
-    else if (req.query.type === 'title') search = `WHERE title  LIKE '%${keyword}%'`;
-    else if (req.query.type === 'content') search = `WHERE content LIKE '%${keyword}%'`;
-    else if (req.query.type === 'writer') search = `WHERE writer LIKE '%${keyword}%'`;
-    // ' or id like 'd' or id like ' <- 이딴식으로 검색하면 뚫린다. 실무에서는 쿼리문 필터 필요.
-    // mysql.createconnection 에 charset을 utf8로 해도 한글검색이 안된다.
-    // 비트나미인가 뭔가때문에 mysql datadir 위치가 이상한곳에 박혀있고, my.ini 파일 수정해도 클라이언트랑 db서버 cahrset이 통일이 안된다. 어쨌든 한글 검색이 안된다.
+    let page = (req.query.page > 1) ? (req.query.page - 1) * title_limit : 0;
 
-    db.query(`SELECT COUNT(*) AS count FROM board`, (err, result)=>{
+    let search = {
+        'option' : 0,
+        'keyword' : ''
+    };
+
+    let search_query = ` `;
+    let keyword = req.query.keyword; // 쿼리문 보호하는 조치 필요.
+    if (req.query.type === 'titlecontent'){
+        search_query = `(title LIKE '%${keyword}%' OR content LIKE '%${keyword}%') AND`;
+        search.keyword = keyword;
+    }
+    else if (req.query.type === 'title'){
+        search_query = `title  LIKE '%${keyword}%' AND`;
+        search.keyword = keyword; search.option = 1;
+    }
+    else if (req.query.type === 'content'){
+        search_query = `content LIKE '%${keyword}%' AND`;
+        search.keyword = keyword; search.option = 2;
+    }
+    else if (req.query.type === 'writer'){
+        search_query = `writer LIKE '%${keyword}%' AND`;
+        search.keyword = keyword; search.option = 3;
+    }
+    // ' or id like 'd' or id like ' <- 이딴식으로 검색하면 뚫린다. 실 서비스에서는 쿼리문 필터 필요.
+
+    db.query(`SELECT COUNT(*) AS count FROM board WHERE deleted=0`, (err, result)=>{
         if (err) return next(err);
-        if (result[0].count < 1) return res.send(template.main(template.check_login(req.user), '', '1'));
+        if (result[0].count < 1) return res.send(template.main(template.check_login(req.user), '', '1', search));
         
         let page_view = '<p class="board_bottom"> ' ;
-        let count = (result[0].count / 20) + 1;
+        let count = (result[0].count / title_limit) + 1;
         for (var i=1; i<=count; i++){
             page_view += `<a href="/?${CheckQuery(req.query)}page=${i}">${i}</a>`
             page_view += ' ';
@@ -55,8 +72,8 @@ app.get('/', (req, res, next)=>{
         page_view +='</p>';
 
         db.query(`SELECT id, title, writer, DATE_FORMAT(day, '%y-%m-%d') AS day
-        FROM board ${search} ORDER BY id DESC LIMIT ?, 20`, // search부분이 마음에 안든다. ? 치환하고 값으로 넣어주면 빈 공백때 ''까지 출력되서 에러뜬다. null로 해도 에러뜬다.
-        [page], (err2, results)=>{
+        FROM board WHERE ${search_query} deleted=0 ORDER BY id DESC LIMIT ?, ?`, // search부분이 마음에 안든다. ? 치환하고 값으로 넣어주면 빈 공백때 ''까지 출력되서 에러뜬다. null로 해도 에러뜬다.
+        [page, title_limit], (err2, results)=>{
             if (err2) return next(err2);
             let list = '';
             for (var i=0; i<results.length; i++){
@@ -69,14 +86,20 @@ app.get('/', (req, res, next)=>{
                 </li>
                 `;
             }
-            return res.send(template.main(template.check_login(req.user), list, page_view));
+            return res.send(template.main(template.check_login(req.user), list, page_view, search));
         });
     });
     return;
 });
 
-app.get('/view', (req, res)=>{
-    return res.send(template.view(template.check_login(req.user)));
+app.get('/view', (req, res, next)=>{
+    let id = req.query.id;
+    db.query('SELECT title, content, writer FROM board WHERE id=?',
+    [req.query.id], (err, results)=>{
+        if (err) return next(err);
+        return res.send(template.view(template.check_login(req.user), req.query.id, results[0]));
+    });
+    return;
 });
 
 app.get('/write', (req, res)=>{
@@ -95,6 +118,20 @@ app.post('/write_process', (req, res, next)=>{
     (err, result)=>{
         if (err) return next(err);
         res.redirect(`/view?id=${result.insertId}`);
+    });
+    return;
+});
+
+app.post('/delete_process', (req, res, next)=>{
+    console.log(req.body);
+    if (!req.user.nickname)
+        return res.redirect('/');
+    if (req.body.writer !== req.user.nickname)
+        return res.redirect('/');
+    db.query(`UPDATE board SET deleted=1 WHERE id=?`, 
+    [req.body.id], (err, results)=>{
+        if (err) return next(err);
+        return res.redirect('/');
     });
     return;
 });
