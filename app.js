@@ -1,5 +1,5 @@
 const port = 3005;
-const title_limit = 2;
+const title_limit = 20;
 const express = require('express'); // 프레임워크
 const app = express();
 const bodyParser = require('body-parser'); // post값 body객체로 만들어줌
@@ -91,9 +91,10 @@ app.get('/', (req, res, next)=>{
 
 app.get('/view', (req, res, next)=>{
     let id = req.query.id;
-    db.query('SELECT title, content, writer FROM board WHERE id=?',
+    db.query('SELECT title, content, writer, deleted FROM board WHERE id=?',
     [req.query.id], (err, results)=>{
         if (err) return next(err);
+        if (results[0].deleted === 1) return res.redirect('/');
         return res.send(template.view(template.check_login(req.user), req.query.id, results[0]));
     });
     return;
@@ -101,21 +102,45 @@ app.get('/view', (req, res, next)=>{
 
 app.get('/write', (req, res)=>{
     if (!req.user) return res.redirect('/');
-    return res.send(template.write(template.check_login(req.user)));
+    let data = {
+        'id' : 0,
+        'title' : '',
+        'content' : ''
+    }
+    return res.send(template.write(template.check_login(req.user), data));
+});
+
+app.post('/write', (req, res)=>{
+    if (!req.user) return res.redirect('/');
+    let data = {
+        'id' : req.body.id,
+        'title' : req.body.title,
+        'content' : req.body.content
+    }
+    return res.send(template.write(template.check_login(req.user), data));
 });
 
 app.post('/write_process', (req, res, next)=>{
     if (req.body.title.length < 1) return res.redirect('/write');
     if (req.body.content.length < 1) return res.redirect('/write');
     if (!req.user.nickname) return next('nickname is null');
-    db.query(`INSERT INTO board 
-    (title, content, writer, day) 
-    VALUES (?, ?, ?, NOW())`,
-    [req.body.title, req.body.content, req.user.nickname],
-    (err, result)=>{
-        if (err) return next(err);
-        res.redirect(`/view?id=${result.insertId}`);
-    });
+
+    if (req.body.id == 0){
+        db.query(`INSERT INTO board 
+        (title, content, writer, day) 
+        VALUES (?, ?, ?, NOW())`,
+        [req.body.title, req.body.content, req.user.nickname],
+        (err, result)=>{
+            if (err) return next(err);
+            return res.redirect(`/view?id=${result.insertId}`);
+        });
+    } else {
+        db.query(`UPDATE board SET title=?, content=? WHERE id=?`,
+        [req.body.title, req.body.content, req.body.id], (err, results)=>{
+            if (err) return next(err);
+            return res.redirect(`/view?id=${req.body.id}`);
+        });
+    } 
     return;
 });
 
@@ -125,8 +150,8 @@ app.post('/delete_process', (req, res, next)=>{
         return res.redirect('/');
     if (req.body.writer !== req.user.nickname)
         return res.redirect('/');
-    db.query(`UPDATE board SET deleted=1 WHERE id=?`, 
-    [req.body.id], (err, results)=>{
+
+    db.query(`UPDATE board SET deleted=1 WHERE id=?`, [req.body.id], (err, results)=>{
         if (err) return next(err);
         return res.redirect('/');
     });
@@ -148,3 +173,6 @@ const CheckQuery = (query)=>{
 }
 
 //<textarea id="comment" class="comment_input" placeholder="댓글을 입력해주세요.(최대 30자)"></textarea>
+
+// /6?type=post&returnURL=https%3A%2F%2Fnotabufu.tistory.com%2Fmanage%2Fposts%2F 아마도 html형식 글작성을 불러오는 형태의 url같은데
+// returnURL ??

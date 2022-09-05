@@ -11,8 +11,7 @@ const template = require('../lib/template-auth.js')
 router.get('/login', (req, res)=>{
     let fmsg = req.flash();
     let feedback = (fmsg.message) ? fmsg.message : '';
-    let html = template.login(feedback);
-    return res.send(html);
+    return res.send(template.login(feedback));
 });
 
 router.post('/login_process', (req, res, next)=>{
@@ -44,8 +43,7 @@ router.get('/logout_process', (req, res)=>{
 router.get('/register', (req, res)=>{
     let fmsg = req.flash();
     let feedback = (fmsg.message) ? fmsg.message : '';
-    let html = template.register(feedback);
-    return res.send(html);
+    return res.send(template.register(feedback));
 });
 
 router.post('/register_process', (req, res, next)=>{
@@ -100,9 +98,64 @@ router.post('/register_process', (req, res, next)=>{
     });
 });
 
-router.get('/findPW', (req, res)=>{
-    let html = template.findPW();
-    return res.send(html);
+router.get('/findPw', (req, res)=>{
+    let fmsg = req.flash();
+    let feedback = (fmsg.message) ? fmsg.message : '';
+    return res.send(template.findPw(feedback));
+});
+
+router.post('/findPw_process', (req, res, next)=>{
+    let body = req.body;
+    if (!body.email.includes('@')){
+        req.flash('message', '이메일 형식을 확인해주세요.');
+        return req.session.save(()=>{
+            res.redirect('/auth/findPw');
+        });
+    }
+    if (body.password.length < 8){
+        req.flash('message', '비밀번호는 8자리 이상이여야 합니다.');
+        return req.session.save(()=>{
+            res.redirect('/auth/findPw');
+        });
+    }
+    if (body.password !== body.password2){
+        req.flash('message', '비밀번호가 일치하지 않습니다.');
+        return req.session.save(()=>{
+            res.redirect('/auth/findPw');
+        });
+    }
+    if (!body.answer){
+        req.flash('message', '질문에 대한 답변을 입력해주세요.');
+        return req.session.save(()=>{
+            res.redirect('/auth/findPw');
+        });
+    }
+
+    db.query(`SELECT question, answer FROM users WHERE email=?`,[body.email],(err, results)=>{
+        if (err) return next(err);
+
+        if (!results[0]){
+            req.flash('message', '일치하는 이메일이 존재하지 않습니다.');
+            return req.session.save(()=>{
+                res.redirect('/auth/findPw');
+            });
+        }
+        if (results[0].question != body.question | results[0].answer !== body.answer){
+            req.flash('message', '질문과 답변이 올바르지 않습니다.');
+            return req.session.save(()=>{
+                res.redirect('/auth/findPw');
+            });
+        }
+        bcrypt.hash(body.password, 10, (err, hash)=>{
+            if (err) return next(err);
+            db.query(`UPDATE users SET password=? WHERE email=?`,[hash, body.email], (err1, results2)=>{
+                if (err1) return next(err1);
+
+                return res.redirect('/auth/login');
+            });
+        });
+
+    });
 });
 
 module.exports = router;
