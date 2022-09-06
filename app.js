@@ -90,12 +90,30 @@ app.get('/', (req, res, next)=>{
 });
 
 app.get('/view', (req, res, next)=>{
-    let id = req.query.id;
     db.query('SELECT title, content, writer, deleted FROM board WHERE id=?',
     [req.query.id], (err, results)=>{
         if (err) return next(err);
         if (results[0].deleted === 1) return res.redirect('/');
-        return res.send(template.view(template.check_login(req.user), req.query.id, results[0]));
+
+        db.query(`SELECT id, writer, content, deleted FROM comment WHERE board_id=?`,
+        [req.query.id], (err2, results2)=>{
+            if (err2) return next(err2);
+
+            let comment = '<ul class="comment_box">';
+            for (var i=0; i<results2.length; i++){
+                comment += `
+                <li class="comment_view">
+                    <div class="comment_balance">${(results2[i].deleted == 0) ? results2[i].writer : ''}</div>
+                    <p class="comment_content">${(results2[i].deleted == 0) ? results2[i].content : '삭제된 댓글입니다.'}</p>
+                    ${((results2[i].deleted != 0)) ? '' : 
+                        `<a href="/comment_delete?id=${results2[i].id}&writer=${results2[i].writer}&board_id=${req.query.id}" class="comment_balance">글삭제</a>`}
+                </li>
+                `;
+            }
+            comment += '</ul>';
+
+            return res.send(template.view(template.check_login(req.user), req.query.id, results[0], comment));
+        });
     });
     return;
 });
@@ -126,8 +144,7 @@ app.post('/write_process', (req, res, next)=>{
     if (!req.user.nickname) return next('nickname is null');
 
     if (req.body.id == 0){
-        db.query(`INSERT INTO board 
-        (title, content, writer, day) 
+        db.query(`INSERT INTO board (title, content, writer, day) 
         VALUES (?, ?, ?, NOW())`,
         [req.body.title, req.body.content, req.user.nickname],
         (err, result)=>{
@@ -145,7 +162,6 @@ app.post('/write_process', (req, res, next)=>{
 });
 
 app.post('/delete_process', (req, res, next)=>{
-    console.log(req.body);
     if (!req.user.nickname)
         return res.redirect('/');
     if (req.body.writer !== req.user.nickname)
@@ -154,6 +170,31 @@ app.post('/delete_process', (req, res, next)=>{
     db.query(`UPDATE board SET deleted=1 WHERE id=?`, [req.body.id], (err, results)=>{
         if (err) return next(err);
         return res.redirect('/');
+    });
+    return;
+});
+
+app.post('/comment_process', (req, res, next)=>{
+    if (req.user.nickname !== req.body.nickname) return res.redirect('/');
+
+    db.query(`INSERT INTO comment (board_id, writer, content, day) 
+    VALUES (?, ?, ?, NOW())`, 
+    [req.body.board_id, req.body.nickname, req.body.comment], 
+    (err, results)=>{
+        if (err) return next(err);
+        return res.redirect(`/view?id=${req.body.board_id}`);
+    });
+
+    return;
+});
+
+app.get('/comment_delete', (req, res, next)=>{
+    if (!req.user) return res.redirect(`/view?id=${req.query.board_id}`);
+    if (req.user.nickname !== req.query.writer) return res.redirect(`/view?id=${req.query.board_id}`);
+
+    db.query(`UPDATE comment SET deleted=1 WHERE id=?`, [req.query.id], (err, results)=>{
+        if (err) return next(err);
+        return res.redirect(`/view?id=${req.query.board_id}`);
     });
     return;
 });
