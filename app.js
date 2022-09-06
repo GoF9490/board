@@ -95,7 +95,7 @@ app.get('/view', (req, res, next)=>{
         if (err) return next(err);
         if (results[0].deleted === 1) return res.redirect('/');
 
-        db.query(`SELECT id, writer, content, deleted FROM comment WHERE board_id=?`,
+        db.query(`SELECT id, writer, content, deleted FROM comment WHERE board_id=? ORDER BY id DESC LIMIT 30`,
         [req.query.id], (err2, results2)=>{
             if (err2) return next(err2);
 
